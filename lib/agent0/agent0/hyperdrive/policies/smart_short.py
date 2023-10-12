@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from numpy.random._generator import Generator as NumpyGenerator
 
 
-class SmartShortPolicy(HyperdrivePolicy):
+class SmartShort(HyperdrivePolicy):
 
     @dataclass
     class Config(HyperdrivePolicy.Config):
