@@ -80,6 +80,8 @@ class SmartShort(HyperdrivePolicy):
         # Get fixed rate
 
         action_list = []
+        print(market.pool_info)
+        print(market.pool_config)
 
         for short_time in wallet.shorts:  # loop over shorts # pylint: disable=consider-using-dict-items
             # if any short is mature
