@@ -26,6 +26,7 @@ HOST = "3.13.94.236"
 # Username binding for bots
 USERNAME = "timmy"
 
+LIQUIDATE = False
 
 # Build custom policy
 # Simple agent, opens a set of all trades for a fixed amount and closes them after
