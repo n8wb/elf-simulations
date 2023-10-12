@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import NamedTuple
 
 from .arbitrage import ArbitragePolicy
+from .smart_short import SmartShortPolicy
 
 # Base policy to subclass from
 from .hyperdrive_policy import HyperdrivePolicy

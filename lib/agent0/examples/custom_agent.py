@@ -20,11 +20,11 @@ if TYPE_CHECKING:
     from numpy.random._generator import Generator as NumpyGenerator
 
 # Define the unique agent env filename to use for this script
-ENV_FILE = "example_agent.account.env"
+ENV_FILE = "hyperdrive_agents.account.env"
 # Host of chain services
-HOST = "localhost"
+HOST = "3.13.94.236"
 # Username binding for bots
-USERNAME = "changeme"
+USERNAME = "timmy"
 
 
 # Build custom policy
@@ -85,6 +85,7 @@ class CustomCycleTradesPolicy(HyperdrivePolicy):
             and the second element defines if the agent is done trading
         """
         # pylint: disable=unused-argument
+        print(f"counter is {self.counter}")
         action_list = []
         if self.counter == 0:
             # Add liquidity

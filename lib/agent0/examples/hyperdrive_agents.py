@@ -13,9 +13,9 @@ from fixedpointmath import FixedPoint
 # Define the unique env filename to use for this script
 ENV_FILE = "hyperdrive_agents.account.env"
 # Host of docker services
-HOST = "localhost"
+HOST = "3.13.94.236"
 # Username binding of bots
-USERNAME = "changeme"
+USERNAME = "timmy"
 
 # Build configuration
 eth_config = EthConfig(artifacts_uri="http://" + HOST + ":8080", rpc_uri="http://" + HOST + ":8545")
@@ -34,7 +34,7 @@ env_config = EnvironmentConfig(
 agent_config: list[AgentConfig] = [
     AgentConfig(
         policy=Policies.arbitrage_policy,
-        number_of_agents=1,
+        number_of_agents=0,
         slippage_tolerance=None,  # No slippage tolerance for arb bot
         # Fixed budgets
         base_budget_wei=FixedPoint(50_000).scaled_value,  # 50k base
@@ -47,7 +47,7 @@ agent_config: list[AgentConfig] = [
     ),
     AgentConfig(
         policy=Policies.random_agent,
-        number_of_agents=0,
+        number_of_agents=1,
         slippage_tolerance=FixedPoint("0.0001"),
         # Fixed budget
         base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
