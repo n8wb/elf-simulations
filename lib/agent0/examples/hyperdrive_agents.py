@@ -46,13 +46,14 @@ agent_config: list[AgentConfig] = [
         ),
     ),
     AgentConfig(
-        policy=Policies.random_agent,
+        policy=Policies.smart_short_policy,
         number_of_agents=1,
         slippage_tolerance=FixedPoint("0.0001"),
         # Fixed budget
         base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
         eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
-        policy_config=Policies.random_agent.Config(trade_chance=FixedPoint("0.8")),
+        policy_config=Policies.smart_short_policy.Config(
+            only_one_short=True),
     ),
 ]
 

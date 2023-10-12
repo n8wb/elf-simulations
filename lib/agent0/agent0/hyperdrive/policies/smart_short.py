@@ -97,10 +97,13 @@ class SmartShortPolicy(HyperdrivePolicy):
                         ),
                     )
                 ]
+            # TODO if any short is underwater, close it
+
         short_balances = [short.balance for short in wallet.shorts.values()]
         has_opened_short = bool(any(short_balance > FixedPoint(0) for short_balance in short_balances))
         # only open a short if the fixed rate is 0.02 or more lower than variable rate
         can_open_short = not self.policy_config.only_one_short or not has_opened_short
+        print(f"fixed rate: {market.fixed_rate}, variable rate: {market.variable_rate}")
         if can_open_short and market.fixed_rate - market.variable_rate < self.policy_config.risk_threshold:
             # maximum amount the agent can short given the market and the agent's wallet
             trade_amount = market.get_max_short(wallet.balance.amount)

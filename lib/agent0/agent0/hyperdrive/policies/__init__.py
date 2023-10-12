@@ -16,3 +16,4 @@ class Policies(NamedTuple):
 
     random_agent = RandomAgent
     arbitrage_policy = ArbitragePolicy
+    smart_short_policy = SmartShortPolicy
