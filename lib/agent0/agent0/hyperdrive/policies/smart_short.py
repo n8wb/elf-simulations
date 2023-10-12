@@ -116,7 +116,7 @@ class SmartShort(HyperdrivePolicy):
                             trade_amount=trade_amount,
                             slippage_tolerance=self.slippage_tolerance,
                             wallet=wallet,
-                            mint_time=market.current_block_time,
+                            #mint_time=market.current_block_time,
                         ),
                     )
                 ]

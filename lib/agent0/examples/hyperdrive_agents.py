@@ -49,12 +49,12 @@ agent_config: list[AgentConfig] = [
     ),
     AgentConfig(
         policy=Zoo.smart_short,
-        number_of_agents=0,
+        number_of_agents=1,
         slippage_tolerance=FixedPoint("0.0001"),
         # Fixed budget
         base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
         eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
-        policy_config=Zoo.smart_short_policy.Config(
+        policy_config=Zoo.smart_short.Config(
             only_one_short=True),
     ),
 ]
