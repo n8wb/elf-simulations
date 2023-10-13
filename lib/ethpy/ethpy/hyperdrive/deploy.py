@@ -7,13 +7,8 @@ from typing import Any, NamedTuple
 from eth_account.account import Account
 from eth_account.signers.local import LocalAccount
 from eth_typing import ChecksumAddress
-from ethpy.base import (
-    deploy_contract,
-    get_transaction_logs,
-    initialize_web3_with_http_provider,
-    load_all_abis,
-    smart_contract_transact,
-)
+from ethpy.base import get_transaction_logs, initialize_web3_with_http_provider, load_all_abis, smart_contract_transact
+from ethpy.base.contract import deploy_contract
 from fixedpointmath import FixedPoint
 from hypertypes.IHyperdriveTypes import Fees, PoolConfig
 from web3 import Web3
@@ -263,7 +258,7 @@ def _deploy_hyperdrive_factory(
                 deploy_account_addr,  # governance
                 deploy_account_addr,  # hyperdriveGovernance
                 deploy_account_addr,  # feeCollector
-                _dataclass_to_tuple(pool_config.Fees),  # curve, flat, governance
+                _dataclass_to_tuple(pool_config.fees),  # curve, flat, governance
                 _dataclass_to_tuple(max_fees),  # max_curve, max_flat, max_governance
                 [],  # defaultPausers (new address[](1))
             ),
