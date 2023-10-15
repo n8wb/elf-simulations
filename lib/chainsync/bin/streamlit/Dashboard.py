@@ -10,6 +10,7 @@ import time
 
 import matplotlib.pyplot as plt
 import mplfinance as mpf
+import pandas as pd
 import streamlit as st
 from chainsync.dashboard import (
     build_fixed_rate,
@@ -18,9 +19,10 @@ from chainsync.dashboard import (
     build_outstanding_positions,
     build_ticker,
     build_user_mapping,
-    plot_fixed_rate,
+    build_variable_rate,
     plot_ohlcv,
     plot_outstanding_positions,
+    plot_rates,
 )
 from chainsync.db.base import initialize_session
 from chainsync.db.hyperdrive import (
@@ -62,12 +64,25 @@ main_fig = mpf.figure(style="mike", figsize=(10, 10))
 # matplotlib doesn't play nice with types
 (ax_ohlcv, ax_fixed_rate, ax_positions) = main_fig.subplots(3, 1, sharex=True)  # type: ignore
 
+freq = None
 while True:
     # Wallet addr to username mapping
     trader_addrs = get_all_traders(session)
     user_map = build_user_mapping(session, trader_addrs)
 
     pool_info = get_pool_info(session, start_block=-max_live_blocks, coerce_float=False)
+    # TODO generalize this
+    # We check the block timestamp difference since we're running
+    # either in real time mode or rapid 312 second per block mode
+    # Determine which one, and set freq respectively
+    if freq is None:
+        if len(pool_info) > 2:
+            time_diff = pool_info.iloc[-1]["timestamp"] - pool_info.iloc[-2]["timestamp"]
+            if time_diff > pd.Timedelta("1T"):
+                freq = "D"
+            else:
+                freq = "5T"
+
     pool_analysis = get_pool_analysis(session, start_block=-max_live_blocks, coerce_float=False)
     ticker = get_ticker(session, start_block=-max_live_blocks, coerce_float=False)
     # Adds user lookup to the ticker
@@ -79,9 +94,11 @@ while True:
     comb_rank, ind_rank = build_leaderboard(latest_wallet_pnl, user_map)
 
     # build ohlcv and volume
-    ohlcv = build_ohlcv(pool_analysis, freq="5T")
-    # build fixed rate
+    ohlcv = build_ohlcv(pool_analysis, freq=freq)
+    # build rates
     fixed_rate = build_fixed_rate(pool_analysis)
+    variable_rate = build_variable_rate(pool_info)
+
     # build outstanding positions plots
     outstanding_positions = build_outstanding_positions(pool_info)
 
@@ -100,7 +117,7 @@ while True:
         ax_positions.clear()
 
         plot_ohlcv(ohlcv, ax_ohlcv)
-        plot_fixed_rate(fixed_rate, ax_fixed_rate)
+        plot_rates(fixed_rate, variable_rate, ax_fixed_rate)
         plot_outstanding_positions(outstanding_positions, ax_positions)
 
         ax_ohlcv.tick_params(axis="both", which="both")
