@@ -54,6 +54,8 @@ class SmartLong(HyperdrivePolicy):
 
         trade_chance: FixedPoint = FixedPoint("0.5")
         risk_threshold: FixedPoint = FixedPoint("0.0001")
+        always_trade: bool = True
+        only_one_long: bool = False
 
     # pylint: disable=too-many-arguments
 
@@ -83,6 +85,8 @@ class SmartLong(HyperdrivePolicy):
             policy_config = self.Config()
         self.trade_chance = policy_config.trade_chance
         self.risk_threshold = policy_config.risk_threshold
+        self.always_trade = policy_config.always_trade
+        self.only_one_long = policy_config.only_one_long
 
         super().__init__(budget, rng, slippage_tolerance)
 
@@ -104,7 +108,7 @@ class SmartLong(HyperdrivePolicy):
         """
         # Any trading at all is based on a weighted coin flip -- they have a trade_chance% chance of executing a trade
         gonna_trade = self.rng.choice([True, False], p=[float(self.trade_chance), 1 - float(self.trade_chance)])
-        if not gonna_trade:
+        if not gonna_trade and not self.always_trade:
             return ([], False)
         action_list = []
         for long_time in wallet.longs:  # loop over longs # pylint: disable=consider-using-dict-items
@@ -127,8 +131,10 @@ class SmartLong(HyperdrivePolicy):
                 ]
         long_balances = [long.balance for long in wallet.longs.values()]
         has_opened_long = bool(any(long_balance > 0 for long_balance in long_balances))
+
+        can_open_long = not has_opened_long or not self.only_one_long
         # only open a long if the fixed rate is higher than variable rate
-        if (interface.fixed_rate - interface.variable_rate) > self.risk_threshold and not has_opened_long:
+        if can_open_long and (interface.fixed_rate - interface.variable_rate) > self.risk_threshold:
             total_bonds_to_match_variable_apr = interface.bonds_given_shares_and_rate(
                 target_rate=interface.variable_rate
             )
