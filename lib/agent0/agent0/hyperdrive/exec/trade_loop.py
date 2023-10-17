@@ -92,16 +92,26 @@ def trade_if_new_block(
                 _, trade_result = check_for_invalid_balance(trade_result)
                 is_slippage, trade_result = check_for_slippage(trade_result)
 
+                # add additional information to the exception
+                trade_result.additional_info = {
+                    "Spot Price": hyperdrive.spot_price,
+                    "Fixed Rate": hyperdrive.fixed_rate,
+                    "Variable Rate": hyperdrive.variable_rate,
+                }
+
                 # Sanity check: exception should not be none if trade failed
                 # Additionally, crash reporting information should exist
                 assert trade_result.exception is not None
                 assert trade_result.pool_config is not None
                 assert trade_result.pool_info is not None
+                assert trade_result.additional_info is not None
 
                 # Crash reporting
-                # TODO add optional argument to crash reporting for logging level
-                # https://github.com/delvtech/elf-simulations/issues/967
-                log_hyperdrive_crash_report(trade_result)
+                if is_slippage:
+                    log_hyperdrive_crash_report(trade_result, logging.WARNING)
+                else:
+                    # Defaults to CRITICAL
+                    log_hyperdrive_crash_report(trade_result)
 
                 if halt_on_errors:
                     # Don't halt if slippage detected and halt_on_slippage is false

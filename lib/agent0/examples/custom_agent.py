@@ -11,7 +11,6 @@ from agent0.hyperdrive.exec import run_agents
 from agent0.hyperdrive.policies import HyperdrivePolicy
 from agent0.hyperdrive.state import HyperdriveActionType, HyperdriveMarketAction
 from elfpy.types import MarketType, Trade
-from ethpy import EthConfig
 from fixedpointmath import FixedPoint
 
 if TYPE_CHECKING:
@@ -20,13 +19,17 @@ if TYPE_CHECKING:
     from numpy.random._generator import Generator as NumpyGenerator
 
 # Define the unique agent env filename to use for this script
-ENV_FILE = "hyperdrive_agents.account.env"
-# Host of chain services
-HOST = "3.13.94.236"
+ENV_FILE = "custom_agent.account.env"
 # Username binding for bots
-USERNAME = "timmy"
-
+USERNAME = "changeme"
+# The amount of base token each bot receives
+BASE_BUDGET_PER_BOT = FixedPoint(50).scaled_value  # 50 base in wei
+ETH_BUDGET_PER_BOT = FixedPoint(1).scaled_value  # 1 eth in wei
+# The slippage tolerance for trades
+SLIPPAGE_TOLERANCE = FixedPoint("0.0001")  # 0.1% slippage
+# Run this file with this flag set to true to close out all open positions
 LIQUIDATE = False
+
 
 # Build custom policy
 # Simple agent, opens a set of all trades for a fixed amount and closes them after
@@ -43,7 +46,7 @@ class CustomCycleTradesPolicy(HyperdrivePolicy):
         Attributes
         ----------
         static_trade_amount_wei: int
-            The probability of this bot to make a trade on an actio call
+            The probability of this bot to make a trade on an action call
         """
 
         # Add additional parameters for custom policy here
@@ -86,7 +89,6 @@ class CustomCycleTradesPolicy(HyperdrivePolicy):
             and the second element defines if the agent is done trading
         """
         # pylint: disable=unused-argument
-        print(f"counter is {self.counter}")
         action_list = []
         if self.counter == 0:
             # Add liquidity
@@ -183,9 +185,6 @@ class CustomCycleTradesPolicy(HyperdrivePolicy):
         return action_list, False
 
 
-# Build configuration
-eth_config = EthConfig(artifacts_uri="http://" + HOST + ":8080", rpc_uri="http://" + HOST + ":8545")
-
 # Build environment config
 env_config = EnvironmentConfig(
     delete_previous_logs=False,
@@ -194,7 +193,6 @@ env_config = EnvironmentConfig(
     log_level=logging.INFO,
     log_stdout=True,
     random_seed=1234,
-    database_api_uri="http://" + HOST + ":5002",
     username=USERNAME,
 )
 
@@ -203,9 +201,9 @@ agent_config: list[AgentConfig] = [
     AgentConfig(
         policy=CustomCycleTradesPolicy,
         number_of_agents=1,
-        slippage_tolerance=FixedPoint("0.0001"),
-        base_budget_wei=FixedPoint(10_000).scaled_value,  # 10k base
-        eth_budget_wei=FixedPoint(10).scaled_value,  # 10 base
+        slippage_tolerance=SLIPPAGE_TOLERANCE,
+        base_budget_wei=BASE_BUDGET_PER_BOT,
+        eth_budget_wei=ETH_BUDGET_PER_BOT,
         policy_config=CustomCycleTradesPolicy.Config(
             static_trade_amount_wei=FixedPoint(100).scaled_value,  # 100 base static trades
         ),
@@ -220,4 +218,4 @@ agent_config: list[AgentConfig] = [
 account_key_config = initialize_accounts(agent_config, ENV_FILE, random_seed=env_config.random_seed)
 
 # Run agents
-run_agents(env_config, agent_config, account_key_config, eth_config=eth_config, liquidate=LIQUIDATE)
+run_agents(env_config, agent_config, account_key_config, liquidate=LIQUIDATE)

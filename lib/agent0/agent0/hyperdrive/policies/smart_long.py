@@ -1,15 +1,13 @@
-"""Agent policy for arbitrade trading on the fixed rate"""
+"""Agent policy for leveraged long positions"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from agent0.hyperdrive.state import HyperdriveActionType, HyperdriveMarketAction
-from elfpy.markets.hyperdrive import  HyperdrivePricingModel, HyperdriveMarketState
-
+from elfpy import WEI
 from elfpy.types import MarketType, Trade
 from fixedpointmath import FixedPoint, FixedPointMath
-from elfpy import WEI
 
 from .hyperdrive_policy import HyperdrivePolicy
 
@@ -17,9 +15,30 @@ if TYPE_CHECKING:
     from agent0.hyperdrive.state import HyperdriveWallet
     from ethpy.hyperdrive import HyperdriveInterface
     from numpy.random._generator import Generator as NumpyGenerator
+# pylint: disable=too-few-public-methods
 
 
 class SmartLong(HyperdrivePolicy):
+    """Agent that opens longs to push the fixed-rate towards the variable-rate."""
+
+    @classmethod
+    def description(cls) -> str:
+        """Describe the policy in a user friendly manner that allows newcomers to decide whether to use it.
+
+        Returns
+        -------
+        str
+            A description of the policy.
+        """
+
+        raw_description = """
+        My strategy:
+            - I'm not willing to open a long if it will cause the fixed-rate apr to go below the variable rate
+                - I simulate the outcome of my trade, and only execute on this condition
+            - I only close if the position has matured
+            - I only open one long at a time
+        """
+        return super().describe(raw_description)
 
     @dataclass
     class Config(HyperdrivePolicy.Config):
@@ -27,11 +46,16 @@ class SmartLong(HyperdrivePolicy):
 
         Attributes
         ----------
+        trade_chance: FixedPoint
+            The percent chance to open a trade.
         risk_threshold: FixedPoint
-           The risk threshold for opening a short
+            The upper threshold of the fixed rate minus the variable rate to open a long.
         """
-        risk_threshold: FixedPoint = FixedPoint("0.02")
-        only_one_long: bool = False
+
+        trade_chance: FixedPoint = FixedPoint("0.5")
+        risk_threshold: FixedPoint = FixedPoint("0.0001")
+
+    # pylint: disable=too-many-arguments
 
     def __init__(
         self,
@@ -57,86 +81,37 @@ class SmartLong(HyperdrivePolicy):
         # Defaults
         if policy_config is None:
             policy_config = self.Config()
-        self.policy_config = policy_config
-        self.pricing_model = HyperdrivePricingModel()
+        self.trade_chance = policy_config.trade_chance
+        self.risk_threshold = policy_config.risk_threshold
 
         super().__init__(budget, rng, slippage_tolerance)
 
-# info unused
-# 'withdrawalSharesProceeds'
-# 'shareAdjustment'
-# 'lpSharePrice'
-# longExposure
-
-
-# conf unused
-# 'baseToken'
-# minimumTransactionAmount
-# positionDuration
-# timeStretch
-# fees
-# oracleSize
-# updateGap
-# contractAddress
-
-    # base_buffer: FixedPoint = FixedPoint(0)
-    # bond_buffer: FixedPoint = FixedPoint(0)
-    # gov_fees_accrued: FixedPoint = FixedPoint(0)
-    # long_base_volume: FixedPoint = FixedPoint(0)
-    # short_base_volume: FixedPoint = FixedPoint(0)
-    # checkpoints: dict[FixedPoint, Checkpoint] = field(default_factory=dict)
-    # total_supply_longs: dict[FixedPoint, FixedPoint] = field(default_factory=dict)
-    # total_supply_shorts: dict[FixedPoint, FixedPoint] = field(default_factory=dict)
-    # withdraw_capital: FixedPoint = FixedPoint(0)
-    # withdraw_interest: FixedPoint = FixedPoint(0)
-    # def get_state(self, market: HyperdriveInterface) -> HyperdriveMarketState:
-    #     """Get the state of the market"""
-    #     info = market.pool_info()
-    #     conf = market.pool_config()
-    #     return HyperdriveMarketState(
-    #         lp_total_supply=info["lpTotalSupply"],
-    #         share_reserves=info["shareReserves"],
-    #         bond_reserves=info["bondReserves"],
-    #         share_price=info["sharePrice"],
-    #         longs_outstanding=info["longsOutstanding"], 
-    #         long_average_maturity_time=info["longAverageMaturityTime"],
-    #         shorts_outstanding=info["shortsOutstanding"],
-    #         short_average_maturity_time=info["shortAverageMaturityTime"],
-    #         withdraw_shares_ready_to_withdraw=info["withdrawalSharesReadyToWithdraw"],
-    #         total_supply_withdraw_shares=info["totalSupplyWithdrawalShares"],
-    #         variable_apr=market.variable_rate,
-    #         init_share_price=conf["initialSharePrice"],
-    #         minimum_share_reserves=conf["minimumShareReserves"],
-    #         checkpoint_duration=conf["checkpointDuration"], ## TODO convert to years
-    #         checkpoint_duration_days= FixedPoint(0), # TODO
-    #         curve_fee_multiple=conf["curveFee"],
-    #         flat_fee_multiple=conf["flatFee"],
-    #         governance_fee_multiple=conf["governanceFee"],
-
-
-    #     )
     def action(
-        self, market: HyperdriveInterface, wallet: HyperdriveWallet
+        self, interface: HyperdriveInterface, wallet: HyperdriveWallet
     ) -> tuple[list[Trade[HyperdriveMarketAction]], bool]:
-        """Specify actions.
+        """Implement a Long Louie user strategy
 
         Arguments
+        ---------
+        interface : HyperdriveInterface
+            The trading market.
+        wallet : HyperdriveWallet
+            The agent's wallet.
 
         Returns
         -------
-        tuple[list[MarketAction], bool]
-            A tuple where the first element is a list of actions,
-            and the second element defines if the agent is done trading
+        action_list : list[MarketAction]
         """
-        # Get fixed rate
-
+        # Any trading at all is based on a weighted coin flip -- they have a trade_chance% chance of executing a trade
+        gonna_trade = self.rng.choice([True, False], p=[float(self.trade_chance), 1 - float(self.trade_chance)])
+        if not gonna_trade:
+            return ([], False)
         action_list = []
-
         for long_time in wallet.longs:  # loop over longs # pylint: disable=consider-using-dict-items
             # if any long is mature
-            # TODO: should we make this less time? they dont close before the bot runs out of money
+            # TODO: should we make this less time? they dont close before the agent runs out of money
             # how to intelligently pick the length? using PNL I guess.
-            if (market.current_block_time - FixedPoint(long_time)) >= market.position_duration_in_years:
+            if (interface.current_block_time - FixedPoint(long_time)) >= interface.pool_config["positionDuration"]:
                 trade_amount = wallet.longs[long_time].balance  # close the whole thing
                 action_list += [
                     Trade(
@@ -146,55 +121,36 @@ class SmartLong(HyperdrivePolicy):
                             trade_amount=trade_amount,
                             slippage_tolerance=self.slippage_tolerance,
                             wallet=wallet,
-                            mint_time=long_time,
+                            maturity_time=long_time,
                         ),
                     )
                 ]
         long_balances = [long.balance for long in wallet.longs.values()]
         has_opened_long = bool(any(long_balance > 0 for long_balance in long_balances))
         # only open a long if the fixed rate is higher than variable rate
-        can_open_long = not has_opened_long or not self.policy_config.only_one_long
-        if not can_open_long:
-            return action_list, False
-        if market.fixed_rate - market.variable_rate <= self.policy_config.risk_threshold:
-            return action_list, False
-
-        total_bonds_to_match_variable_apr = self.pricing_model.calc_bond_reserves(
-            target_apr=market.variable_rate,  # fixed rate targets the variable rate
-            time_remaining=market.position_duration,
-            market_state=market.market_state,
-        )
-        # get the delta bond amount & convert units
-        new_bonds_to_match_variable_apr = (
-            market.market_state.bond_reserves - total_bonds_to_match_variable_apr
-        ) * market.spot_price
-        new_base_to_match_variable_apr = market.pricing_model.calc_shares_out_given_bonds_in(
-            share_reserves=market.market_state.share_reserves,
-            bond_reserves=market.market_state.bond_reserves,
-            lp_total_supply=market.market_state.lp_total_supply,
-            d_bonds=new_bonds_to_match_variable_apr,
-            time_elapsed=FixedPoint(1),  # opening a short, so no time has elapsed
-            share_price=market.market_state.share_price,
-            init_share_price=market.market_state.init_share_price,
-        )
-        # get the maximum amount the agent can long given the market and the agent's wallet
-        max_base = market.get_max_long_for_account(wallet.balance.amount)
-        # don't want to trade more than the agent has or more than the market can handle
-        trade_amount = FixedPointMath.minimum(max_base, new_base_to_match_variable_apr)
-        if trade_amount > WEI and wallet.balance.amount > WEI:
-            action_list += [
-                Trade(
-                    market_type=MarketType.HYPERDRIVE,
-                    market_action=HyperdriveMarketAction(
-                        action_type=HyperdriveActionType.OPEN_LONG,
-                        trade_amount=trade_amount,
-                        slippage_tolerance=self.slippage_tolerance,
-                        wallet=wallet,
-                        mint_time=market.block_time.time,
-                    ),
-                )
-            ]
-        return action_list, False
-
-
-
+        if (interface.fixed_rate - interface.variable_rate) > self.risk_threshold and not has_opened_long:
+            total_bonds_to_match_variable_apr = interface.bonds_given_shares_and_rate(
+                target_rate=interface.variable_rate
+            )
+            # get the delta bond amount & convert units
+            bond_reserves: FixedPoint = interface.pool_info["bondReserves"]
+            new_bonds_to_match_variable_apr = (bond_reserves - total_bonds_to_match_variable_apr) * interface.spot_price
+            # new_base_to_match_variable_apr = interface.calc_shares_out_given_bonds_in(
+            new_base_to_match_variable_apr = interface.get_out_for_in(new_bonds_to_match_variable_apr, shares_in=False)
+            # get the maximum amount the agent can long given the market and the agent's wallet
+            max_base = interface.get_max_long(wallet.balance.amount)
+            # don't want to trade more than the agent has or more than the market can handle
+            trade_amount = FixedPointMath.minimum(max_base, new_base_to_match_variable_apr)
+            if trade_amount > WEI and wallet.balance.amount > WEI:
+                action_list += [
+                    Trade(
+                        market_type=MarketType.HYPERDRIVE,
+                        market_action=HyperdriveMarketAction(
+                            action_type=HyperdriveActionType.OPEN_LONG,
+                            trade_amount=trade_amount,
+                            slippage_tolerance=self.slippage_tolerance,
+                            wallet=wallet,
+                        ),
+                    )
+                ]
+        return (action_list, False)

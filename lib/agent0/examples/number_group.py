@@ -7,23 +7,21 @@ from agent0 import initialize_accounts
 from agent0.base.config import AgentConfig, EnvironmentConfig
 from agent0.hyperdrive.exec import run_agents
 from agent0.hyperdrive.policies import Zoo
+from ethpy import EthConfig
 from fixedpointmath import FixedPoint
-
-# NOTE be sure to adjust `eth.env` to connect to a specific chain
 
 # Define the unique env filename to use for this script
 ENV_FILE = "hyperdrive_agents.account.env"
+# Host of docker services
+HOST = "3.13.94.236"
 # Username binding of bots
-USERNAME = "changeme"
-# The amount of base token each bot receives
-BASE_BUDGET_PER_BOT = FixedPoint(50).scaled_value  # 50 base in wei
-ETH_BUDGET_PER_BOT = FixedPoint(1).scaled_value  # 1 eth in wei
-# The slippage tolerance for trades
-SLIPPAGE_TOLERANCE = FixedPoint("0.0001")  # 0.1% slippage
+USERNAME = "timmy"
 # Run this file with this flag set to true to close out all open positions
 LIQUIDATE = False
 
 # Build configuration
+eth_config = EthConfig(artifacts_uri="http://" + HOST + ":8080", rpc_uri="http://" + HOST + ":8545")
+
 env_config = EnvironmentConfig(
     delete_previous_logs=True,
     halt_on_errors=True,
@@ -31,6 +29,7 @@ env_config = EnvironmentConfig(
     log_level=logging.INFO,
     log_stdout=True,
     random_seed=1234,
+    database_api_uri="http://" + HOST + ":5002",
     username=USERNAME,
 )
 
@@ -38,10 +37,10 @@ agent_config: list[AgentConfig] = [
     AgentConfig(
         policy=Zoo.arbitrage,
         number_of_agents=1,
-        slippage_tolerance=SLIPPAGE_TOLERANCE,  # No slippage tolerance for arb bot
+        slippage_tolerance=None,  # No slippage tolerance for arb bot
         # Fixed budgets
-        base_budget_wei=BASE_BUDGET_PER_BOT,
-        eth_budget_wei=ETH_BUDGET_PER_BOT,
+        base_budget_wei=FixedPoint(50_000).scaled_value,  # 50k base
+        eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
         policy_config=Zoo.arbitrage.Config(
             trade_amount=FixedPoint(1000),  # Open 1k in base or short 1k bonds
             high_fixed_rate_thresh=FixedPoint(0.1),  # Upper fixed rate threshold
@@ -49,13 +48,14 @@ agent_config: list[AgentConfig] = [
         ),
     ),
     AgentConfig(
-        policy=Zoo.random,
-        number_of_agents=0,
-        slippage_tolerance=SLIPPAGE_TOLERANCE,
+        policy=Zoo.smart_short,
+        number_of_agents=1,
+        slippage_tolerance=FixedPoint("0.0001"),
         # Fixed budget
-        base_budget_wei=BASE_BUDGET_PER_BOT,
-        eth_budget_wei=ETH_BUDGET_PER_BOT,
-        policy_config=Zoo.random.Config(trade_chance=FixedPoint("0.8")),
+        base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
+        eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
+        policy_config=Zoo.smart_short.Config(
+            only_one_short=True),
     ),
 ]
 
@@ -68,4 +68,4 @@ agent_config: list[AgentConfig] = [
 account_key_config = initialize_accounts(agent_config, env_file=ENV_FILE, random_seed=env_config.random_seed)
 
 # Run agents
-run_agents(env_config, agent_config, account_key_config, liquidate=LIQUIDATE)
+run_agents(env_config, agent_config, account_key_config, eth_config=eth_config, liquidate=LIQUIDATE)
