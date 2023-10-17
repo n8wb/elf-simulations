@@ -29,7 +29,7 @@ env_config = EnvironmentConfig(
     log_level=logging.INFO,
     log_stdout=True,
     random_seed=1234,
-    database_api_uri="http://" + HOST + ":5002",
+    #database_api_uri="http://" + HOST + ":5002",
     username=USERNAME,
 )
 
@@ -55,7 +55,17 @@ agent_config: list[AgentConfig] = [
         base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
         eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
         policy_config=Zoo.smart_short.Config(
-            only_one_short=True),
+            only_one_short=False),
+    ),
+    AgentConfig(
+        policy=Zoo.smart_long,
+        number_of_agents=1,
+        slippage_tolerance=FixedPoint("0.0001"),
+        # Fixed budget
+        base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
+        eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
+        policy_config=Zoo.smart_long.Config(
+            only_one_long=False),
     ),
 ]
 
