@@ -56,9 +56,8 @@ class TestHyperdriveInterface:
         hyperdrive_contract_addresses: HyperdriveAddresses = local_hyperdrive_pool.hyperdrive_contract_addresses
         eth_config = EthConfig(artifacts_uri="not used", rpc_uri=rpc_uri, abi_dir=abi_dir)
         hyperdrive = HyperdriveInterface(eth_config, addresses=hyperdrive_contract_addresses)
-        checkpoint = smart_contract_read(
-            hyperdrive.hyperdrive_contract, "getCheckpoint", hyperdrive.current_block_number
-        )
+        checkpoint_id = hyperdrive.get_checkpoint_id(hyperdrive.current_block_time)
+        checkpoint = smart_contract_read(hyperdrive.hyperdrive_contract, "getCheckpoint", checkpoint_id)
         assert checkpoint == hyperdrive._contract_latest_checkpoint  # pylint: disable=protected-access
 
     def test_spot_price_and_fixed_rate(self, local_hyperdrive_pool: DeployedHyperdrivePool):
@@ -109,6 +108,7 @@ class TestHyperdriveInterface:
         _ = hyperdrive.current_block_number
         _ = hyperdrive.current_block_time
         _ = hyperdrive.variable_rate
+        _ = hyperdrive.vault_shares
         _ = hyperdrive.get_max_long(FixedPoint(1000))
         _ = hyperdrive.get_max_short(FixedPoint(1000))
         # TODO: need an agent address to mock up trades

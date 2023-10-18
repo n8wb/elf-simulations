@@ -17,7 +17,6 @@ from agent0.hyperdrive.state import (
 from elfpy import types
 from ethpy.base import retry_call
 from ethpy.hyperdrive import HyperdriveInterface
-from fixedpointmath import FixedPoint
 from web3.types import Nonce
 
 if TYPE_CHECKING:
@@ -69,7 +68,7 @@ async def async_execute_single_agent_trade(
     # TODO preliminary search shows async tasks has very low overhead:
     # https://stackoverflow.com/questions/55761652/what-is-the-overhead-of-an-asyncio-task
     # However, should probably test what the limit number of trades an agent can make in one block
-    wallet_deltas_or_exception: list[HyperdriveWalletDeltas | Exception] = await asyncio.gather(
+    wallet_deltas_or_exception: list[HyperdriveWalletDeltas | BaseException] = await asyncio.gather(
         *[
             async_match_contract_call_to_trade(agent, hyperdrive, trade_object, nonce=Nonce(base_nonce + i))
             for i, trade_object in enumerate(trades)
@@ -104,6 +103,14 @@ async def async_execute_single_agent_trade(
             # in isolation and doing one trade per call.
             pool_config = hyperdrive.pool_config
             pool_info = hyperdrive.pool_info
+            checkpoint_info = hyperdrive.latest_checkpoint
+            # add additional information to the exception
+            additional_info = {
+                "spot_price": hyperdrive.spot_price,
+                "fixed_rate": hyperdrive.fixed_rate,
+                "variable_rate": hyperdrive.variable_rate,
+                "vault_shares": hyperdrive.vault_shares,
+            }
             trade_result = TradeResult(
                 status=TradeStatus.FAIL,
                 agent=agent,
@@ -111,12 +118,12 @@ async def async_execute_single_agent_trade(
                 exception=result,
                 pool_config=pool_config,
                 pool_info=pool_info,
+                checkpoint_info=checkpoint_info,
+                additional_info=additional_info,
             )
-        else:
-            # Should never get here
-            # TODO this function was originally used for types
-            # Is this okay to use here?
-            assert_never(result)
+        else:  # Should never get here
+            # TODO: use match statement and assert_never(result)
+            raise AssertionError("invalid result type")
         trade_results.append(trade_result)
 
     return trade_results
@@ -235,9 +242,10 @@ async def async_match_contract_call_to_trade(
             )
 
         case HyperdriveActionType.ADD_LIQUIDITY:
-            # TODO: The following variables are hard coded for now, but should be specified in the trade spec
-            min_apr = FixedPoint(scaled_value=1)  # 1e-18
-            max_apr = FixedPoint(1)  # 1.0
+            min_apr = trade.min_apr
+            assert min_apr, "min_apr is required for ADD_LIQUIDITY"
+            max_apr = trade.max_apr
+            assert max_apr, "max_apr is required for ADD_LIQUIDITY"
             trade_result = await hyperdrive.async_add_liquidity(
                 agent, trade.trade_amount, min_apr, max_apr, nonce=nonce
             )

@@ -26,9 +26,9 @@ LIQUIDATE = False
 # Build configuration
 env_config = EnvironmentConfig(
     delete_previous_logs=True,
-    halt_on_errors=True,
+    halt_on_errors=False,
     log_filename=".logging/agent0_logs.log",
-    log_level=logging.INFO,
+    log_level=logging.CRITICAL,
     log_stdout=True,
     random_seed=1234,
     username=USERNAME,
@@ -37,7 +37,7 @@ env_config = EnvironmentConfig(
 agent_config: list[AgentConfig] = [
     AgentConfig(
         policy=Zoo.arbitrage,
-        number_of_agents=1,
+        number_of_agents=0,
         slippage_tolerance=SLIPPAGE_TOLERANCE,  # No slippage tolerance for arb bot
         # Fixed budgets
         base_budget_wei=BASE_BUDGET_PER_BOT,
@@ -57,13 +57,26 @@ agent_config: list[AgentConfig] = [
         eth_budget_wei=ETH_BUDGET_PER_BOT,
         policy_config=Zoo.random.Config(trade_chance=FixedPoint("0.8")),
     ),
+    AgentConfig(
+        policy=Zoo.lp_and_arb,
+        number_of_agents=0,
+        slippage_tolerance=None,  # No slippage tolerance for arb bot
+        # Fixed budgets
+        base_budget_wei=BASE_BUDGET_PER_BOT,
+        eth_budget_wei=ETH_BUDGET_PER_BOT,
+        policy_config=Zoo.lp_and_arb.Config(
+            lp_portion=FixedPoint("0.5"),  # LP with 50% of capital
+            high_fixed_rate_thresh=FixedPoint(0.01),  # Amount over variable rate to arbitrage
+            low_fixed_rate_thresh=FixedPoint(0.01),  # Amount below variable rate to arbitrage
+        ),
+    ),
 ]
 
 
 # Build accounts env var
 # This function writes a user defined env file location.
 # If it doesn't exist, create it based on agent_config
-# (If develop is False, will clean exit and print instructions on how to fund agent)
+# (If os.environ["DEVELOP"] is False, will clean exit and print instructions on how to fund agent)
 # If it does exist, read it in and use it
 account_key_config = initialize_accounts(agent_config, env_file=ENV_FILE, random_seed=env_config.random_seed)
 

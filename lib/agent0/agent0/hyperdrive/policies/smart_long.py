@@ -37,6 +37,7 @@ class SmartLong(HyperdrivePolicy):
                 - I simulate the outcome of my trade, and only execute on this condition
             - I only close if the position has matured
             - I only open one long at a time
+            - I do not take into account fees when targeting the fixed rate
         """
         return super().describe(raw_description)
 
@@ -134,14 +135,16 @@ class SmartLong(HyperdrivePolicy):
 
         can_open_long = not has_opened_long or not self.only_one_long
         # only open a long if the fixed rate is higher than variable rate
-        if can_open_long and (interface.fixed_rate - interface.variable_rate) > self.risk_threshold:
+        if (interface.fixed_rate - interface.variable_rate) > self.risk_threshold and can_open_long:
+            # calculate the total number of bonds we want to see in the pool
             total_bonds_to_match_variable_apr = interface.bonds_given_shares_and_rate(
                 target_rate=interface.variable_rate
             )
             # get the delta bond amount & convert units
             bond_reserves: FixedPoint = interface.pool_info["bondReserves"]
+            # calculate how many bonds we take out of the pool
             new_bonds_to_match_variable_apr = (bond_reserves - total_bonds_to_match_variable_apr) * interface.spot_price
-            # new_base_to_match_variable_apr = interface.calc_shares_out_given_bonds_in(
+            # calculate how much base we pay for the new bonds
             new_base_to_match_variable_apr = interface.get_out_for_in(new_bonds_to_match_variable_apr, shares_in=False)
             # get the maximum amount the agent can long given the market and the agent's wallet
             max_base = interface.get_max_long(wallet.balance.amount)
@@ -159,4 +162,4 @@ class SmartLong(HyperdrivePolicy):
                         ),
                     )
                 ]
-        return (action_list, False)
+        return action_list, False

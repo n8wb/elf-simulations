@@ -188,9 +188,9 @@ class CustomCycleTradesPolicy(HyperdrivePolicy):
 # Build environment config
 env_config = EnvironmentConfig(
     delete_previous_logs=False,
-    halt_on_errors=True,
+    halt_on_errors=False,
     log_filename=".logging/agent0_logs.logs",
-    log_level=logging.INFO,
+    log_level=logging.CRITICAL,
     log_stdout=True,
     random_seed=1234,
     username=USERNAME,
@@ -213,7 +213,7 @@ agent_config: list[AgentConfig] = [
 # Build accounts env var
 # This function writes a user defined env file location.
 # If it doesn't exist, create it based on agent_config
-# (If develop is False, will clean exit and print instructions on how to fund agent)
+# (If os.environ["DEVELOP"] is False, will clean exit and print instructions on how to fund agent)
 # If it does exist, read it in and use it
 account_key_config = initialize_accounts(agent_config, ENV_FILE, random_seed=env_config.random_seed)
 

@@ -29,8 +29,9 @@ CHECKPOINT_WAITING_PERIOD = 0.5
 
 def does_checkpoint_exist(hyperdrive_contract: Contract, checkpoint_time: int) -> bool:
     """Checks whether or not a given checkpoint exists."""
-
-    return smart_contract_read(hyperdrive_contract, "getCheckpoint", int(checkpoint_time))["sharePrice"] > 0
+    checkpoint = smart_contract_read(hyperdrive_contract, "getCheckpoint", int(checkpoint_time))
+    logging.info("%s", checkpoint)
+    return checkpoint["sharePrice"] > 0
 
 
 def get_config() -> tuple[EthConfig, EnvironmentConfig]:
@@ -69,7 +70,7 @@ def main() -> None:
     if block_timestamp_interval is None:
         block_timestamp_interval = 1
     else:
-        block_timestamp_interval = int(block_time)
+        block_timestamp_interval = int(block_timestamp_interval)
 
     web3 = initialize_web3_with_http_provider(eth_config.rpc_uri, reset_provider=False)
 
@@ -103,6 +104,13 @@ def main() -> None:
     config = get_hyperdrive_pool_config(hyperdrive_contract)
     checkpoint_duration = config["checkpointDuration"]
 
+    logging.info(
+        "Checkpoint Duration: %s; Block time: %s; Block timestamp interval: %s",
+        checkpoint_duration,
+        block_time,
+        block_timestamp_interval,
+    )
+
     while True:
         # Get the latest block time and check to see if a new checkpoint should
         # be minted. This bot waits for a portion of the checkpoint to reduce
@@ -114,9 +122,20 @@ def main() -> None:
             raise AssertionError(f"{latest_block=} has no timestamp")
         checkpoint_portion_elapsed = timestamp % checkpoint_duration
         checkpoint_time = timestamp - timestamp % checkpoint_duration
-        if checkpoint_portion_elapsed >= CHECKPOINT_WAITING_PERIOD * checkpoint_duration and not does_checkpoint_exist(
-            hyperdrive_contract, checkpoint_time
-        ):
+        need_checkpoint = checkpoint_portion_elapsed >= CHECKPOINT_WAITING_PERIOD * checkpoint_duration
+        checkpoint_doesnt_exist = not does_checkpoint_exist(hyperdrive_contract, checkpoint_time)
+
+        logging.info(
+            "timestamp=%s checkpoint_portion_elapsed=%s checkpoint_time=%s "
+            "need_checkpoint=%s checkpoint_doesnt_exist=%s",
+            timestamp,
+            checkpoint_portion_elapsed,
+            checkpoint_time,
+            need_checkpoint,
+            checkpoint_doesnt_exist,
+        )
+
+        if need_checkpoint and checkpoint_doesnt_exist:
             logging.info("Submitting a checkpoint for checkpointTime=%s...", checkpoint_time)
             # TODO: We will run into issues with the gas price being too low
             # with testnets and mainnet. When we get closer to production, we
@@ -140,15 +159,16 @@ def main() -> None:
             sleep_duration = checkpoint_duration * (1 + CHECKPOINT_WAITING_PERIOD) - checkpoint_portion_elapsed
         else:
             sleep_duration = checkpoint_duration * CHECKPOINT_WAITING_PERIOD - checkpoint_portion_elapsed
+        # Adjust sleep duration by the speedup factor
+        adjusted_sleep_duration = sleep_duration / (block_timestamp_interval / block_time)
         logging.info(
             "Current time is %s. Sleeping for %s seconds ...",
             datetime.datetime.fromtimestamp(timestamp),
-            sleep_duration,
+            adjusted_sleep_duration,
         )
-        # Adjust sleep duration by the speedup factor
-        adjusted_sleep_duration = sleep_duration / (block_timestamp_interval / block_time)
         time.sleep(adjusted_sleep_duration)
 
 
 # Run the checkpoint bot.
-main()
+if __name__ == "__main__":
+    main()

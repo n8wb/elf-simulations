@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import os
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import eth_utils
 import pyperdrive
@@ -92,9 +92,9 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
         data_provider_contract: Contract = web3.eth.contract(
             abi=abis["ERC4626DataProvider"], address=web3.to_checksum_address(addresses.mock_hyperdrive)
         )
-        yield_address = smart_contract_read(data_provider_contract, "pool")["value"]
+        self.yield_address = smart_contract_read(data_provider_contract, "pool")["value"]
         self.yield_contract: Contract = web3.eth.contract(
-            abi=abis["MockERC4626"], address=web3.to_checksum_address(yield_address)
+            abi=abis["MockERC4626"], address=web3.to_checksum_address(self.yield_address)
         )
         # pool config is static
         self._contract_pool_config = get_hyperdrive_pool_config(self.hyperdrive_contract)
@@ -199,6 +199,29 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
         spot_price = pyperdrive.get_spot_price(pool_config_str, pool_info_str)  # pylint: disable=no-member
         return FixedPoint(scaled_value=int(spot_price))
 
+    @property
+    def vault_shares(self) -> FixedPoint:
+        """Get the balance of vault shares that Hyperdrive has."""
+        vault_shares = smart_contract_read(self.yield_contract, "balanceOf", (self.hyperdrive_contract.address))
+        return FixedPoint(scaled_value=int(vault_shares["value"]))
+
+    def get_checkpoint_id(self, block_timestamp: Timestamp) -> Timestamp:
+        """Get the Checkpoint ID for a given timestamp.
+
+        Arguments
+        ---------
+        block_timestamp: int
+            A timestamp for any block. Use the latest block to get the current checkpoint id,
+            or a specific timestamp of a transaction's block if getting the checkpoint id for that transaction.
+
+        Returns
+        -------
+        int
+            The checkpoint id, which can be used as an argument for the Hyperdrive getCheckpoint function.
+        """
+        latest_checkpoint_timestamp = block_timestamp - (block_timestamp % self.pool_config["checkpointDuration"])
+        return cast(Timestamp, latest_checkpoint_timestamp)
+
     def get_out_for_in(
         self,
         amount_in: FixedPoint,
@@ -209,14 +232,14 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
         Arguments
         ---------
         amount_in : FixedPoint
-            The aount in.
+            The amount in.
         shares_in : bool
             True if the asset in is shares, False if it is bonds.
 
         Returns
         -------
         FixedPoint
-            The aount out.
+            The amount out.
         """
         pool_config_str = self._serialized_pool_config()
         pool_info_str = self._serialized_pool_info()
@@ -239,14 +262,14 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
         Arguments
         ---------
         amount_out : FixedPoint
-            The aount out.
+            The amount out.
         shares_out : bool
             True if the asset out is shares, False if it is bonds.
 
         Returns
         -------
         FixedPoint
-            The aount in.
+            The amount in.
         """
         pool_config_str = self._serialized_pool_config()
         pool_info_str = self._serialized_pool_info()
@@ -258,6 +281,93 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
             shares_out,
         )
         return FixedPoint(scaled_value=int(in_for_out))
+
+    def calculate_fees_out_given_bonds_in(
+        self, bonds_in: FixedPoint, maturity_time: int | None = None
+    ) -> tuple[FixedPoint, FixedPoint, FixedPoint]:
+        """Calculates the fees that go to the LPs and governance.
+
+        Implements the formula:
+            curve_fee = ((1 - p) * phi_curve * d_y * t)/c
+            gov_fee = curve_fee * phi_gov
+            flat_fee = (d_y * (1 - t) * phi_flat) / c
+
+        Arguments
+        ---------
+        bonds_in : FixedPoint
+            The amount of bonds in.
+        interface : HyperdriveInterface
+            The API interface object.
+        maturity_time : int, optional
+            The maturity timestamp of the open position, in epoch seconds.
+
+        Returns
+        -------
+        tuple[FixedPoint, FixedPoint, FixedPoint] consisting of:
+            curve_fee : FixedPoint
+                Curve fee, in shares.
+            flat_fee : FixedPoint
+                Flat fee, in shares.
+            gov_fee : FixedPoint
+                Governance fee, in shares.
+        """
+        if maturity_time is None:
+            maturity_time = self.current_block_time + int(self.pool_config["positionDuration"])
+        time_remaining_in_seconds = FixedPoint(maturity_time - self.current_block_time)
+        normalized_time_remaining = time_remaining_in_seconds / self.pool_config["positionDuration"]
+        curve_fee = (
+            (FixedPoint(1) - self.spot_price) * self.pool_config["curveFee"] * bonds_in * normalized_time_remaining
+        ) / self.pool_config["initialSharePrice"]
+        flat_fee = (
+            bonds_in * (FixedPoint(1) - normalized_time_remaining) * self.pool_config["flatFee"]
+        ) / self.pool_config["initialSharePrice"]
+        gov_fee = curve_fee * self.pool_config["governanceFee"] + flat_fee * self.pool_config["governanceFee"]
+        return curve_fee, flat_fee, gov_fee
+
+    def calculate_fees_out_given_shares_in(
+        self, shares_in: FixedPoint, maturity_time: int | None = None
+    ) -> tuple[FixedPoint, FixedPoint, FixedPoint]:
+        """Calculates the fees that go to the LPs and governance.
+
+        Implements the formula:
+            curve_fee = ((1 / p) - 1) * phi_curve * c * dz
+            gov_fee = shares * phi_gov
+            flat_fee = (d_y * (1 - t) * phi_flat) / c
+
+        Arguments
+        ---------
+        bonds_in : FixedPoint
+            The amount of bonds in.
+        interface : HyperdriveInterface
+            The API interface object.
+        maturity_time : int, optional
+            The maturity timestamp of the open position, in epoch seconds.
+
+        Returns
+        -------
+        tuple[FixedPoint, FixedPoint, FixedPoint] consisting of:
+            curve_fee : FixedPoint
+                Curve fee, in shares.
+            flat_fee : FixedPoint
+                Flat fee, in shares.
+            gov_fee : FixedPoint
+                Governance fee, in shares.
+        """
+        if maturity_time is None:
+            maturity_time = self.current_block_time + int(self.pool_config["positionDuration"])
+        time_remaining_in_seconds = FixedPoint(maturity_time - self.current_block_time)
+        normalized_time_remaining = time_remaining_in_seconds / self.pool_config["positionDuration"]
+        curve_fee = (
+            ((FixedPoint(1) / self.spot_price) - FixedPoint(1))
+            * self.pool_config["curveFee"]
+            * self.pool_config["initialSharePrice"]
+            * shares_in
+        )
+        flat_fee = (
+            shares_in * (FixedPoint(1) - normalized_time_remaining) * self.pool_config["flatFee"]
+        ) / self.pool_config["initialSharePrice"]
+        gov_fee = curve_fee * self.pool_config["governanceFee"] + flat_fee * self.pool_config["governanceFee"]
+        return curve_fee, flat_fee, gov_fee
 
     def _serialized_pool_config(self) -> PoolConfig:
         pool_config_str = PoolConfig(
@@ -318,7 +428,7 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
                 self.current_block_number,
             )
             self._contract_latest_checkpoint = get_hyperdrive_checkpoint(
-                self.hyperdrive_contract, self.current_block_number
+                self.hyperdrive_contract, self.get_checkpoint_id(self.current_block_time)
             )
             self._latest_checkpoint = process_hyperdrive_checkpoint(
                 copy.deepcopy(self._contract_latest_checkpoint),
@@ -337,8 +447,7 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
         Arguments
         ---------
         target_rate : FixedPoint
-            The target apr for which to calculate the bond reserves given the pools current share
-            reserves.
+            The target apr for which to calculate the bond reserves given the pools current share reserves.
         """
 
         mu: FixedPoint = self.pool_config["initialSharePrice"]
@@ -755,56 +864,26 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
         Arguments
         ---------
         budget: FixedPoint
-            How much money the agent is able to spend
+            How much money the agent is able to spend, in base.
 
         Returns
         -------
         FixedPoint
-            The maximum long as a FixedPoint representation of a Solidity uint256 value.
+            The maximum long, in units of base.
         """
         self._ensure_current_state()
-        pool_config_str = PoolConfig(
-            baseToken=self._contract_pool_config["baseToken"],
-            initialSharePrice=str(self._contract_pool_config["initialSharePrice"]),
-            minimumShareReserves=str(self._contract_pool_config["minimumShareReserves"]),
-            minimumTransactionAmount=str(self._contract_pool_config["minimumTransactionAmount"]),
-            positionDuration=str(self._contract_pool_config["positionDuration"]),
-            checkpointDuration=str(self._contract_pool_config["checkpointDuration"]),
-            timeStretch=str(self._contract_pool_config["timeStretch"]),
-            governance=self._contract_pool_config["governance"],
-            feeCollector=self._contract_pool_config["feeCollector"],
-            Fees=Fees(
-                curve=str(self._contract_pool_config["fees"][0]),
-                flat=str(self._contract_pool_config["fees"][1]),
-                governance=str(self._contract_pool_config["fees"][2]),
-            ),
-            oracleSize=str(self._contract_pool_config["oracleSize"]),
-            updateGap=str(self._contract_pool_config["updateGap"]),
-        )
-        pool_info_str = PoolInfo(
-            shareReserves=str(self._contract_pool_info["shareReserves"]),
-            shareAdjustment=str(self._contract_pool_info["shareAdjustment"]),
-            bondReserves=str(self._contract_pool_info["bondReserves"]),
-            lpTotalSupply=str(self._contract_pool_info["lpTotalSupply"]),
-            sharePrice=str(self._contract_pool_info["sharePrice"]),
-            longsOutstanding=str(self._contract_pool_info["longsOutstanding"]),
-            longAverageMaturityTime=str(self._contract_pool_info["longAverageMaturityTime"]),
-            shortsOutstanding=str(self._contract_pool_info["shortsOutstanding"]),
-            shortAverageMaturityTime=str(self._contract_pool_info["shortAverageMaturityTime"]),
-            withdrawalSharesReadyToWithdraw=str(self._contract_pool_info["withdrawalSharesReadyToWithdraw"]),
-            withdrawalSharesProceeds=str(self._contract_pool_info["withdrawalSharesProceeds"]),
-            lpSharePrice=str(self._contract_pool_info["lpSharePrice"]),
-            longExposure=str(self._contract_pool_info["longExposure"]),
-        )
         # pylint: disable=no-member
-        max_long = pyperdrive.get_max_long(
-            pool_config_str,
-            pool_info_str,
-            str(budget.scaled_value),
-            checkpoint_exposure=str(self.latest_checkpoint["longExposure"].scaled_value),
-            maybe_max_iterations=None,
+        return FixedPoint(
+            scaled_value=int(
+                pyperdrive.get_max_long(
+                    self._serialized_pool_config(),
+                    self._serialized_pool_info(),
+                    str(budget.scaled_value),
+                    checkpoint_exposure=str(self.latest_checkpoint["longExposure"].scaled_value),
+                    maybe_max_iterations=None,
+                )
+            )
         )
-        return FixedPoint(scaled_value=int(max_long))
 
     def get_max_short(self, budget: FixedPoint) -> FixedPoint:
         """Get the maximum allowable short for the given Hyperdrive pool and agent budget.
@@ -812,55 +891,26 @@ class HyperdriveInterface(BaseInterface[HyperdriveAddresses]):
         Arguments
         ---------
         budget: FixedPoint
-            How much money the agent is able to spend
+            How much money the agent is able to spend, in base.
 
         Returns
         -------
         FixedPoint
-            The maximum long as a FixedPoint representation of a Solidity uint256 value.
+            The maximum short, in units of base.
         """
         self._ensure_current_state()
-        pool_config_str = PoolConfig(
-            baseToken=self._contract_pool_config["baseToken"],
-            initialSharePrice=str(self._contract_pool_config["initialSharePrice"]),
-            minimumShareReserves=str(self._contract_pool_config["minimumShareReserves"]),
-            minimumTransactionAmount=str(self._contract_pool_config["minimumTransactionAmount"]),
-            positionDuration=str(self._contract_pool_config["positionDuration"]),
-            checkpointDuration=str(self._contract_pool_config["checkpointDuration"]),
-            timeStretch=str(self._contract_pool_config["timeStretch"]),
-            governance=self._contract_pool_config["governance"],
-            feeCollector=self._contract_pool_config["feeCollector"],
-            Fees=Fees(
-                curve=str(self._contract_pool_config["fees"][0]),
-                flat=str(self._contract_pool_config["fees"][1]),
-                governance=str(self._contract_pool_config["fees"][2]),
-            ),
-            oracleSize=str(self._contract_pool_config["oracleSize"]),
-            updateGap=str(self._contract_pool_config["updateGap"]),
-        )
-        pool_info_str = PoolInfo(
-            shareReserves=str(self._contract_pool_info["shareReserves"]),
-            shareAdjustment=str(self._contract_pool_info["shareAdjustment"]),
-            bondReserves=str(self._contract_pool_info["bondReserves"]),
-            lpTotalSupply=str(self._contract_pool_info["lpTotalSupply"]),
-            sharePrice=str(self._contract_pool_info["sharePrice"]),
-            longsOutstanding=str(self._contract_pool_info["longsOutstanding"]),
-            longAverageMaturityTime=str(self._contract_pool_info["longAverageMaturityTime"]),
-            shortsOutstanding=str(self._contract_pool_info["shortsOutstanding"]),
-            shortAverageMaturityTime=str(self._contract_pool_info["shortAverageMaturityTime"]),
-            withdrawalSharesReadyToWithdraw=str(self._contract_pool_info["withdrawalSharesReadyToWithdraw"]),
-            withdrawalSharesProceeds=str(self._contract_pool_info["withdrawalSharesProceeds"]),
-            lpSharePrice=str(self._contract_pool_info["lpSharePrice"]),
-            longExposure=str(self._contract_pool_info["longExposure"]),
-        )
+        pool_info = self._serialized_pool_info()
         # pylint: disable=no-member
-        max_short = pyperdrive.get_max_short(
-            pool_config_str,
-            pool_info_str,
-            str(budget.scaled_value),
-            pool_info_str.sharePrice,
-            checkpoint_exposure=str(self.latest_checkpoint["longExposure"].scaled_value),
-            maybe_conservative_price=None,
-            maybe_max_iterations=None,
+        return FixedPoint(
+            scaled_value=int(
+                pyperdrive.get_max_short(
+                    self._serialized_pool_config(),
+                    pool_info,
+                    str(budget.scaled_value),
+                    pool_info.sharePrice,
+                    checkpoint_exposure=str(self.latest_checkpoint["longExposure"].scaled_value),
+                    maybe_conservative_price=None,
+                    maybe_max_iterations=None,
+                )
+            )
         )
-        return FixedPoint(scaled_value=int(max_short))

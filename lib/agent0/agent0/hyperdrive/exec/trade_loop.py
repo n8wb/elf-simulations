@@ -61,9 +61,11 @@ def trade_if_new_block(
     if not wait_for_new_block or latest_block_number > last_executed_block:
         # log and show block info
         logging.info(
-            "Block number: %d, Block time: %s",
+            "Block number: %d, Block time: %s, Price: %s, Rate: %s",
             latest_block_number,
             str(datetime.fromtimestamp(float(latest_block_timestamp))),
+            hyperdrive.spot_price,
+            hyperdrive.fixed_rate,
         )
         # To avoid jumbled print statements due to asyncio, we handle all logging and crash reporting
         # here, with inner functions returning trade results.
@@ -92,19 +94,11 @@ def trade_if_new_block(
                 _, trade_result = check_for_invalid_balance(trade_result)
                 is_slippage, trade_result = check_for_slippage(trade_result)
 
-                # add additional information to the exception
-                trade_result.additional_info = {
-                    "Spot Price": hyperdrive.spot_price,
-                    "Fixed Rate": hyperdrive.fixed_rate,
-                    "Variable Rate": hyperdrive.variable_rate,
-                }
-
                 # Sanity check: exception should not be none if trade failed
                 # Additionally, crash reporting information should exist
                 assert trade_result.exception is not None
                 assert trade_result.pool_config is not None
                 assert trade_result.pool_info is not None
-                assert trade_result.additional_info is not None
 
                 # Crash reporting
                 if is_slippage:

@@ -7,6 +7,7 @@ from decimal import Decimal
 import pandas as pd
 from eth_typing import ChecksumAddress, HexAddress, HexStr
 from ethpy.base import smart_contract_preview_transaction
+from ethpy.hyperdrive import BASE_TOKEN_SYMBOL
 from fixedpointmath import FixedPoint
 from web3.contract.contract import Contract
 
@@ -35,7 +36,7 @@ def calc_single_closeout(
         The closeout pnl
     """
     # pnl is itself
-    if position["baseTokenType"] == "BASE":
+    if position["baseTokenType"] == BASE_TOKEN_SYMBOL:
         return position["value"]
     # If no value, pnl is 0
     if position["value"] == 0:
@@ -95,10 +96,12 @@ def calc_single_closeout(
     elif tokentype == "WITHDRAWAL_SHARE":
         fn_args = (amount, min_output, address, as_underlying)
         try:
-            preview_result = smart_contract_preview_transaction(
-                contract, sender, "redeemWithdrawalShares", *fn_args, block_identifier=position["blockNumber"]
-            )
-            out_pnl = preview_result["proceeds"] / Decimal(1e18)
+            # For PNL, we assume all withdrawal shares are redeemable
+            # even if there are no withdrawal shares available to withdraw
+            # Hence, we don't use preview transaction here
+            out_pnl = Decimal(
+                amount * pool_info["sharePrice"].values[-1] * pool_info["lpSharePrice"].values[-1]
+            ) / Decimal(1e18)
         except Exception as exception:  # pylint: disable=broad-except
             logging.warning("Exception caught, ignoring: %s", exception)
     else:
