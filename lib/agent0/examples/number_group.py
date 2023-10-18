@@ -39,7 +39,7 @@ agent_config: list[AgentConfig] = [
         number_of_agents=1,
         slippage_tolerance=None,  # No slippage tolerance for arb bot
         # Fixed budgets
-        base_budget_wei=FixedPoint(50_000).scaled_value,  # 50k base
+        base_budget_wei=FixedPoint(500).scaled_value,  # 50k base
         eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
         policy_config=Zoo.arbitrage.Config(
             trade_amount=FixedPoint(1000),  # Open 1k in base or short 1k bonds
@@ -52,20 +52,21 @@ agent_config: list[AgentConfig] = [
         number_of_agents=1,
         slippage_tolerance=FixedPoint("0.0001"),
         # Fixed budget
-        base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
+        base_budget_wei=FixedPoint(100).scaled_value,  # 5k base
         eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
         policy_config=Zoo.smart_short.Config(
             only_one_short=False),
     ),
     AgentConfig(
-        policy=Zoo.smart_long,
+        policy=Zoo.smart_long2,
         number_of_agents=1,
         slippage_tolerance=FixedPoint("0.0001"),
         # Fixed budget
-        base_budget_wei=FixedPoint(5_000).scaled_value,  # 5k base
+        base_budget_wei=FixedPoint(100).scaled_value,  # 5k base
         eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
-        policy_config=Zoo.smart_long.Config(
-            only_one_long=False),
+        policy_config=Zoo.smart_long2.Config(
+            only_one_long=True,
+            risk_threshold=FixedPoint("0.001")),
     ),
 ]
 

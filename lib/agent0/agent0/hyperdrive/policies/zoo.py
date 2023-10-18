@@ -8,6 +8,7 @@ from .lpandarb import LPandArb
 from .random import Random
 from .smart_long import SmartLong
 from .smart_short import SmartShort
+from .smart_long2 import SmartLong2
 # Container for all the policies
 class Zoo(NamedTuple):
     """All policies in agent0."""
@@ -16,6 +17,7 @@ class Zoo(NamedTuple):
     arbitrage = Arbitrage
     smart_short = SmartShort
     smart_long = SmartLong
+    smart_long2 = SmartLong2
     lp_and_arb = LPandArb
 
     def describe(self, policies: list | str | None = None) -> str:
