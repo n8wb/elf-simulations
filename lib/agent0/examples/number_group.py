@@ -20,7 +20,7 @@ USERNAME = "timmy"
 LIQUIDATE = False
 
 # Build configuration
-eth_config = EthConfig(artifacts_uri="http://" + HOST + ":8080", rpc_uri="http://" + HOST + ":8545")
+#eth_config = EthConfig(artifacts_uri="http://" + HOST + ":8080", rpc_uri="http://" + HOST + ":8545")
 
 env_config = EnvironmentConfig(
     delete_previous_logs=True,
@@ -78,4 +78,4 @@ agent_config: list[AgentConfig] = [
 account_key_config = initialize_accounts(agent_config, env_file=ENV_FILE, random_seed=env_config.random_seed)
 
 # Run agents
-run_agents(env_config, agent_config, account_key_config, eth_config=eth_config, liquidate=LIQUIDATE)
+run_agents(env_config, agent_config, account_key_config,  liquidate=LIQUIDATE)
