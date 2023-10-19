@@ -58,7 +58,21 @@ class SmartShort(HyperdrivePolicy):
         self.policy_config = policy_config
 
         super().__init__(budget, rng, slippage_tolerance)
+    @classmethod
+    def description(cls) -> str:
+        """Describe the policy in a user friendly manner that allows newcomers to decide whether to use it.
 
+        Returns
+        -------
+        str
+            A description of the policy.
+        """
+
+        raw_description = """
+        My strategy:
+            - I am a short seller
+        """
+        return super().describe(raw_description)
     def action(
         self, market: HyperdriveInterface, wallet: HyperdriveWallet
     ) -> tuple[list[Trade[HyperdriveMarketAction]], bool]:
