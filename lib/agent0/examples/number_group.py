@@ -39,7 +39,7 @@ agent_config: list[AgentConfig] = [
         number_of_agents=1,
         slippage_tolerance=None,  # No slippage tolerance for arb bot
         # Fixed budgets
-        base_budget_wei=FixedPoint(500).scaled_value,  # 50k base
+        base_budget_wei=FixedPoint(100).scaled_value,  # 50k base
         eth_budget_wei=FixedPoint(1).scaled_value,  # 1 base
         policy_config=Zoo.arbitrage.Config(
             trade_amount=FixedPoint(1000),  # Open 1k in base or short 1k bonds
